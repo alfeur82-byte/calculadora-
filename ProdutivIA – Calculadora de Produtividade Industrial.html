@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ProdutivIA – Calculadora de Produtividade Industrial</title>
+<style>
+:root{--bg:#f4f6f8;--card:#ffffff;--text:#14202b;--muted:#5b6b7a;--line:#d5dde4;--accent:#0b6bcb;--accent-text:#ffffff;--ok:#12805c;--warn:#b26a00;--bad:#c0392b;--chip:#e4eaf0;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e161e;--card:#17212b;--text:#e8eef3;--muted:#9aaab8;--line:#2b3a47;--accent:#4aa3ff;--accent-text:#06111c;--ok:#3ecf9a;--warn:#f0b04a;--bad:#ff7a6b;--chip:#223140;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0e161e;--card:#17212b;--text:#e8eef3;--muted:#9aaab8;--line:#2b3a47;--accent:#4aa3ff;--accent-text:#06111c;--ok:#3ecf9a;--warn:#f0b04a;--bad:#ff7a6b;--chip:#223140;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+main{max-width:560px;margin:0 auto;padding:18px 16px 40px}
+h1{font-size:1.5rem;margin:0}
+.sub{color:var(--muted);margin:2px 0 14px;font-size:.92rem}
+.chips{display:flex;gap:8px;overflow-x:auto;padding:2px 0 10px;scrollbar-width:thin}
+.chip{flex:0 0 auto;border:1px solid var(--line);background:var(--chip);color:var(--text);border-radius:999px;padding:9px 14px;font:inherit;font-size:.9rem;cursor:pointer}
+.chip[aria-selected="true"]{background:var(--accent);color:var(--accent-text);border-color:var(--accent);font-weight:600}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-top:10px}
+.card h2{font-size:1.1rem;margin:0 0 2px}
+.formula{color:var(--muted);font-size:.85rem;margin:0 0 12px}
+label{display:block;font-size:.88rem;color:var(--muted);margin:10px 0 4px}
+.row{display:flex;gap:8px;align-items:center}
+input{flex:1;min-width:0;width:100%;font:inherit;font-size:1.05rem;padding:11px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--text)}
+input:focus{outline:2px solid var(--accent);outline-offset:1px}
+.un{flex:0 0 58px;color:var(--muted);font-size:.85rem}
+.btn{margin-top:14px;width:100%;padding:11px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--text);font:inherit;cursor:pointer}
+.res .item{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--line)}
+.res .item:last-child{border-bottom:0}
+.res .k{color:var(--muted)}
+.res .v{font-weight:600;text-align:right}
+.big{font-size:1.9rem;font-weight:700;margin:2px 0 6px}
+.ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}
+.msg{color:var(--muted)}
+.err{color:var(--bad)}
+.nota{margin-top:8px;font-size:.85rem;color:var(--warn)}
+footer{color:var(--muted);font-size:.8rem;margin-top:18px;text-align:center}
+</style>
+</head>
+<body>
+<main>
+  <h1>ProdutivIA</h1>
+  <p class="sub">Calculadora de produtividade industrial</p>
+  <div class="chips" id="chips" role="tablist" aria-label="Cálculos"></div>
+  <section class="card">
+    <h2 id="titulo"></h2>
+    <p class="formula" id="formula"></p>
+    <div id="campos"></div>
+    <button class="btn" id="limpar" type="button">Limpar campos</button>
+  </section>
+  <section class="card res" id="resultado" aria-live="polite"></section>
+  <footer>Use a mesma unidade de tempo em todos os campos de tempo. Vírgula ou ponto funcionam como decimal.</footer>
+</main>
+<script>
+const fmt = (n, d = 2) => n.toLocaleString("pt-BR", {minimumFractionDigits: d, maximumFractionDigits: d});
+const pct = x => fmt(x * 100) + "%";
+const req = (cond, msg) => { if (!cond) throw new Error(msg); };
+
+function classe(o) {
+  if (o >= 0.85) return ["Classe mundial", "ok"];
+  if (o >= 0.60) return ["Típico / aceitável", "ok"];
+  if (o >= 0.40) return ["Baixo", "warn"];
+  return ["Crítico", "bad"];
+}
+
+const CALCS = [
+  {id: "oee", nome: "OEE", titulo: "OEE – Eficiência Global do Equipamento",
+   formula: "OEE = Disponibilidade × Desempenho × Qualidade",
+   campos: [["Tempo planejado", "min"], ["Tempo de paradas", "min"], ["Ciclo ideal", "min/un"], ["Total produzido", "un"], ["Total de defeitos", "un"]],
+   calc([plan, par, cic, prod, def]) {
+     req(plan > 0, "O tempo planejado deve ser maior que zero.");
+     req(par >= 0, "O tempo de paradas não pode ser negativo.");
+     req(par < plan, "As paradas devem ser menores que o tempo planejado.");
+     req(cic > 0, "O ciclo ideal deve ser maior que zero.");
+     req(prod > 0, "O total produzido deve ser maior que zero.");
+     req(def >= 0 && def <= prod, "Os defeitos devem estar entre zero e o total produzido.");
+     const op = plan - par, d = op / plan, p = cic * prod / op, q = (prod - def) / prod, o = d * p * q;
+     const [cl, cc] = classe(o);
+     const r = [{big: pct(o), cls: cc, k: "OEE"}, {k: "Classificação", v: cl, cls: cc},
+       {k: "Disponibilidade", v: pct(d)}, {k: "Desempenho", v: pct(p)}, {k: "Qualidade", v: pct(q)}];
+     if (p > 1) r.push({nota: "Desempenho acima de 100%: confira se o ciclo ideal está correto."});
+     return r;
+   }},
+  {id: "takt", nome: "Takt time", titulo: "Takt time",
+   formula: "Takt = Tempo disponível ÷ Demanda",
+   campos: [["Tempo disponível", "min"], ["Demanda do cliente", "un"]],
+   calc([t, dem]) {
+     req(t > 0, "O tempo disponível deve ser maior que zero.");
+     req(dem > 0, "A demanda deve ser maior que zero.");
+     return [{big: fmt(t / dem) + " min/un", k: "Ritmo exigido"}];
+   }},
+  {id: "ciclo", nome: "Tempo de ciclo", titulo: "Tempo de ciclo médio",
+   formula: "Ciclo = Tempo total ÷ Unidades produzidas",
+   campos: [["Tempo total", "min"], ["Unidades produzidas", "un"]],
+   calc([t, u]) {
+     req(t > 0, "O tempo total deve ser maior que zero.");
+     req(u > 0, "As unidades devem ser maiores que zero.");
+     return [{big: fmt(t / u) + " min/un", k: "Ciclo real"}];
+   }},
+  {id: "cap", nome: "Capacidade", titulo: "Capacidade produtiva",
+   formula: "Capacidade = Tempo disponível ÷ Tempo de ciclo",
+   campos: [["Tempo disponível", "min"], ["Tempo de ciclo", "min/un"]],
+   calc([t, c]) {
+     req(t > 0, "O tempo disponível deve ser maior que zero.");
+     req(c > 0, "O tempo de ciclo deve ser maior que zero.");
+     return [{big: fmt(t / c, 1) + " un", k: "Capacidade no período"}];
+   }},
+  {id: "mo", nome: "Mão de obra", titulo: "Produtividade da mão de obra",
+   formula: "Produtividade = Produção ÷ Horas-homem",
+   campos: [["Produção", "un"], ["Horas-homem", "h"]],
+   calc([p, h]) {
+     req(p >= 0, "A produção não pode ser negativa.");
+     req(h > 0, "As horas-homem devem ser maiores que zero.");
+     return [{big: fmt(p / h) + " un/h", k: "Por homem-hora"}];
+   }},
+  {id: "refugo", nome: "Refugo", titulo: "Taxa de refugo",
+   formula: "Refugo = Defeitos ÷ Total produzido",
+   campos: [["Defeitos", "un"], ["Total produzido", "un"]],
+   calc([d, t]) {
+     req(t > 0, "O total produzido deve ser maior que zero.");
+     req(d >= 0 && d <= t, "Os defeitos devem estar entre zero e o total produzido.");
+     const r = d / t;
+     return [{big: pct(r), k: "Taxa de refugo", cls: r <= 0.02 ? "ok" : r <= 0.05 ? "warn" : "bad"}];
+   }},
+  {id: "custo", nome: "Custo unitário", titulo: "Custo unitário",
+   formula: "Custo unitário = Custo total ÷ Unidades boas",
+   campos: [["Custo total", "R$"], ["Unidades boas", "un"]],
+   calc([c, u]) {
+     req(c >= 0, "O custo não pode ser negativo.");
+     req(u > 0, "As unidades boas devem ser maiores que zero.");
+     return [{big: "R$ " + fmt(c / u), k: "Custo por unidade"}];
+   }},
+  {id: "manut", nome: "MTBF / MTTR", titulo: "Manutenção – MTBF e MTTR",
+   formula: "MTBF = Operação ÷ Falhas · MTTR = Reparo ÷ Falhas",
+   campos: [["Tempo de operação", "h"], ["Tempo total de reparo", "h"], ["Número de falhas", "un"]],
+   calc([op, rep, f]) {
+     req(op > 0, "O tempo de operação deve ser maior que zero.");
+     req(rep >= 0, "O tempo de reparo não pode ser negativo.");
+     req(f > 0, "O número de falhas deve ser maior que zero.");
+     const a = op / f, b = rep / f;
+     return [{big: fmt(a) + " h", k: "MTBF"}, {k: "MTTR", v: fmt(b) + " h"},
+       {k: "Disponibilidade inerente", v: pct(a / (a + b))}];
+   }}
+];
+
+const vals = {};
+CALCS.forEach(c => vals[c.id] = c.campos.map(() => ""));
+let atual = CALCS[0];
+
+const $ = id => document.getElementById(id);
+
+function montarChips() {
+  const box = $("chips");
+  box.innerHTML = "";
+  CALCS.forEach(c => {
+    const b = document.createElement("button");
+    b.className = "chip";
+    b.type = "button";
+    b.role = "tab";
+    b.textContent = c.nome;
+    b.setAttribute("aria-selected", c === atual);
+    b.onclick = () => { atual = c; montarChips(); montarCampos(); };
+    box.appendChild(b);
+  });
+}
+
+function montarCampos() {
+  $("titulo").textContent = atual.titulo;
+  $("formula").textContent = atual.formula;
+  const box = $("campos");
+  box.innerHTML = "";
+  atual.campos.forEach(([nome, un], i) => {
+    const l = document.createElement("label");
+    l.textContent = nome;
+    l.htmlFor = "c" + i;
+    const row = document.createElement("div");
+    row.className = "row";
+    const inp = document.createElement("input");
+    inp.id = "c" + i;
+    inp.type = "text";
+    inp.inputMode = "decimal";
+    inp.autocomplete = "off";
+    inp.placeholder = "0";
+    inp.value = vals[atual.id][i];
+    inp.oninput = () => { vals[atual.id][i] = inp.value; calcular(); };
+    const u = document.createElement("span");
+    u.className = "un";
+    u.textContent = un;
+    row.append(inp, u);
+    box.append(l, row);
+  });
+  calcular();
+}
+
+function mostrar(html) { const r = $("resultado"); r.innerHTML = ""; r.append(...html); }
+
+function el(tag, cls, txt) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (txt !== undefined) e.textContent = txt;
+  return e;
+}
+
+function calcular() {
+  const txt = vals[atual.id];
+  if (txt.some(s => s.trim() === "")) {
+    return mostrar([el("div", "msg", "Preencha todos os campos para ver o resultado.")]);
+  }
+  const nums = txt.map(s => Number(s.trim().replace(",", ".")));
+  if (nums.some(n => !Number.isFinite(n))) {
+    return mostrar([el("div", "err", "Digite apenas números.")]);
+  }
+  try {
+    const rows = atual.calc(nums);
+    const out = [];
+    rows.forEach(r => {
+      if (r.nota) { out.push(el("div", "nota", r.nota)); return; }
+      if (r.big) {
+        out.push(el("div", "k msg", r.k));
+        out.push(el("div", "big " + (r.cls || ""), r.big));
+        return;
+      }
+      const it = el("div", "item");
+      it.append(el("span", "k", r.k), el("span", "v " + (r.cls || ""), r.v));
+      out.push(it);
+    });
+    mostrar(out);
+  } catch (e) {
+    mostrar([el("div", "err", e.message)]);
+  }
+}
+
+$("limpar").onclick = () => { vals[atual.id] = atual.campos.map(() => ""); montarCampos(); };
+
+montarChips();
+montarCampos();
+</script>
+</body>
+</html>
